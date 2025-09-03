@@ -1,5 +1,6 @@
-# src/data_loader.py
+#loading the data from the CSV file
 import pandas as pd
+
 
 def load_data(filepath):
     """
@@ -13,14 +14,13 @@ def load_data(filepath):
     """
     try:
         # Read the CSV file into a DataFrame
-        df = pd.read_csv(filepath)
+        df = pd.read_csv(filepath, sep=';')
         print("✅ Data loaded successfully!")
 
         # Display the first 5 rows
         print("--- Dataset Preview ---")
         print(df.head())
         print("-----------------------")
-
 
         return df
 
