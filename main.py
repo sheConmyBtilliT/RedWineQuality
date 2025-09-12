@@ -10,7 +10,7 @@ from ann import get_ann_model
 from trainer import train_and_evaluate
 
 
-def main():
+def main() -> None:
     """Main function to run the ML pipeline."""
     # Set display options for better output
     pd.set_option('display.max_columns', None)
