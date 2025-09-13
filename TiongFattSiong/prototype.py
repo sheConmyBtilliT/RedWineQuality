@@ -5,7 +5,7 @@ from ttkbootstrap.constants import *
 from ttkbootstrap.scrolled import ScrolledFrame
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.preprocessing import StandardScaler
 from imblearn.over_sampling import SMOTE
 import threading
@@ -29,6 +29,7 @@ class MachineLearningGUI(ttk.Window):
         self.X_train, self.X_test, self.y_train, self.y_test = None, None, None, None
         self.scaler = None
         self.trained_models = {}  # To store trained model objects
+        self.best_params = {}  # To store best hyperparameters
         self.model_metrics = {}  # To store performance metrics for charting
         self.model_reports = {}  # To store full classification reports for detailed charts
         self.model_predictions = {}  # To store model predictions for confusion matrix chart
@@ -105,11 +106,20 @@ class MachineLearningGUI(ttk.Window):
     def setup_training_tab(self, parent_tab):
         control_frame = ttk.Frame(parent_tab)
         control_frame.pack(fill=X, pady=5)
+        control_frame.columnconfigure((0, 1), weight=1)
+
+        # New button for hyperparameter tuning
+        tune_button = ttk.Button(control_frame, text="Tune Hyperparameters (Optional, Slow)",
+                                 command=self.start_tuning_thread, bootstyle="warning")
+        tune_button.grid(row=0, column=0, sticky=EW, padx=(0, 5), pady=5)
+
         train_button = ttk.Button(control_frame, text="Start Data Preprocessing & Model Training",
                                   command=self.start_training_thread, bootstyle="success")
-        train_button.pack(side=LEFT, fill=X, expand=True, padx=(0, 10))
+        train_button.grid(row=0, column=1, sticky=EW, padx=(5, 0), pady=5)
+
         self.progress_bar = ttk.Progressbar(control_frame, mode='indeterminate')
-        self.progress_bar.pack(side=LEFT, fill=X, expand=True)
+        self.progress_bar.grid(row=1, column=0, columnspan=2, sticky=EW, pady=5)
+
         self.results_text = tk.Text(parent_tab, height=30, width=100, font=("Courier New", 10), wrap="word")
         self.results_text.pack(pady=10, fill=BOTH, expand=True)
         self.results_text.insert(END, "Training results will be displayed here.")
@@ -149,7 +159,7 @@ class MachineLearningGUI(ttk.Window):
         self.prediction_frame = ScrolledFrame(parent_tab, autohide=True)
         self.prediction_frame.pack(fill=BOTH, expand=True, pady=20, padx=20)
         self.prediction_placeholder = ttk.Label(self.prediction_frame,
-                                                text="Train the SVM model in Tab 3 to enable prediction.",
+                                                text="Train a model in Tab 3 to enable prediction.",
                                                 font=("Helvetica", 14))
         self.prediction_placeholder.pack()
 
@@ -266,9 +276,76 @@ class MachineLearningGUI(ttk.Window):
                                                        "Please load the dataset first in the 'Data Overview' tab."); return
         threading.Thread(target=self.preprocess_and_train, daemon=True).start()
 
+    def start_tuning_thread(self):
+        if self.raw_df is None: messagebox.showwarning("No Data", "Please load the dataset first."); return
+        if not self.X_train:  # Check if data has been preprocessed
+            messagebox.showinfo("Info", "Data will be preprocessed before tuning.")
+        threading.Thread(target=self.tune_hyperparameters, daemon=True).start()
+
+    def _preprocess_data_if_needed(self):
+        """Internal helper to preprocess data without training models."""
+        if self.X_train is not None:
+            self.update_results("Data is already preprocessed. Using existing splits.\n")
+            return True
+        self.update_results("--- Preprocessing Data for Tuning ---\n")
+        try:
+            df = self.raw_df.copy()
+            if df.isnull().sum().any(): self.update_results("Handling missing values...\n"); df = df.fillna(df.median())
+            df['quality_category'] = df['quality'].apply(lambda x: 1 if x >= 7 else 0);
+            df = df.drop('quality', axis=1)
+            X = df.drop('quality_category', axis=1);
+            y = df['quality_category']
+            # Use a temporary train/test split for tuning, will be overwritten by main training
+            X_train_tune, _, y_train_tune, _ = train_test_split(X, y, test_size=0.3, random_state=42, stratify=y)
+            scaler_tune = StandardScaler();
+            X_train_tune = scaler_tune.fit_transform(X_train_tune)
+            smote = SMOTE(random_state=42);
+            self.X_train_tuned, self.y_train_tuned = smote.fit_resample(X_train_tune, y_train_tune)
+            self.update_results("Preprocessing for tuning complete.\n\n")
+            return True
+        except Exception as e:
+            messagebox.showerror("Preprocessing Error", f"An error occurred during preprocessing: {e}")
+            return False
+
+    def tune_hyperparameters(self):
+        self.progress_bar.start()
+        if not self._preprocess_data_if_needed():
+            self.progress_bar.stop()
+            return
+
+        from sklearn.neighbors import KNeighborsClassifier
+        from sklearn.svm import SVC
+        from sklearn.neural_network import MLPClassifier
+
+        self.update_results("--- Starting Hyperparameter Tuning (This may take several minutes) ---\n")
+
+        # Define parameter grids
+        param_grids = {
+            "KNN": {'n_neighbors': [3, 5, 7, 9], 'weights': ['uniform', 'distance']},
+            "SVM": {'C': [0.1, 1, 10], 'gamma': ['scale', 'auto']},
+            "ANN": {'hidden_layer_sizes': [(50,), (100,)], 'activation': ['relu', 'tanh']}
+        }
+
+        models = {"KNN": KNeighborsClassifier(), "SVM": SVC(probability=True),
+                  "ANN": MLPClassifier(max_iter=500, early_stopping=True, random_state=42)}
+
+        self.best_params.clear()
+
+        for name in models:
+            self.update_results(f"--- Tuning {name} ---\n")
+            grid_search = GridSearchCV(models[name], param_grids[name], cv=3, scoring='f1', n_jobs=-1, verbose=1)
+            grid_search.fit(self.X_train_tuned, self.y_train_tuned)
+            self.best_params[name] = grid_search.best_params_
+            self.update_results(f"Best parameters for {name}: {grid_search.best_params_}\n")
+            self.update_results(f"Best F1-score: {grid_search.best_score_:.4f}\n\n")
+
+        self.progress_bar.stop()
+        messagebox.showinfo("Tuning Complete",
+                            "Hyperparameter tuning finished. The best parameters have been saved and will be used in the next training run.")
+
     def preprocess_and_train(self):
         self.progress_bar.start()
-        self.update_results("--- Starting Data Preprocessing ---\n")
+        self.update_results("--- Starting Data Preprocessing & Model Training ---\n")
         try:
             df = self.raw_df.copy()
             if df.isnull().sum().any(): self.update_results("Handling missing values...\n"); df = df.fillna(df.median())
@@ -287,20 +364,39 @@ class MachineLearningGUI(ttk.Window):
             smote = SMOTE(random_state=42);
             self.X_train, self.y_train = smote.fit_resample(self.X_train, self.y_train)
             self.update_results(f"Training data balanced with SMOTE. New size: {len(self.X_train)} samples.\n\n")
+
             self.update_results("--- Starting Model Training ---\n")
+            if self.best_params:
+                self.update_results("Using best parameters found during tuning.\n\n")
+            else:
+                self.update_results("Using default model parameters.\n\n")
+
             from sklearn.metrics import classification_report, accuracy_score, roc_auc_score
             from sklearn.neighbors import KNeighborsClassifier
             from sklearn.svm import SVC
             from sklearn.neural_network import MLPClassifier
-            models_to_train = {"KNN": KNeighborsClassifier(n_neighbors=5),
-                               "SVM": SVC(kernel='rbf', probability=True, random_state=42),
-                               "ANN": MLPClassifier(hidden_layer_sizes=(100,), max_iter=1000, random_state=42,
-                                                    early_stopping=True)}
+
+            # --- FIX STARTS HERE ---
+            # Get default SVM parameters that include probability=True
+            svm_params = {'probability': True, 'random_state': 42}
+            # Update with tuned parameters if they exist
+            if "SVM" in self.best_params:
+                svm_params.update(self.best_params["SVM"])
+            # --- FIX ENDS HERE ---
+
+            # Use tuned params if available, otherwise use defaults
+            models_to_train = {
+                "KNN": KNeighborsClassifier(**self.best_params.get("KNN", {})),
+                "SVM": SVC(**svm_params), # Use the updated svm_params
+                "ANN": MLPClassifier(**self.best_params.get("ANN", {'max_iter': 2000, 'early_stopping': True, 'random_state': 42}))
+            }
+
             self.model_metrics.clear();
             self.model_reports.clear();
             self.model_predictions.clear()
             for name, model in models_to_train.items():
                 self.update_results(f"--- Training {name} ---\n")
+                self.update_results(f"Parameters: {model.get_params()}\n")
                 model.fit(self.X_train, self.y_train)
                 self.trained_models[name] = model
                 y_pred = model.predict(self.X_test)
@@ -318,7 +414,7 @@ class MachineLearningGUI(ttk.Window):
             self.model_selector['values'] = list(self.trained_models.keys())
             if self.trained_models: self.model_selector.set(list(self.trained_models.keys())[0])
 
-            if "SVM" in self.trained_models: self.populate_prediction_tab()
+            self.populate_prediction_tab()
             messagebox.showinfo("Success",
                                 "All models trained successfully! Proceed to the 'Performance Comparison' or 'Live Prediction' tab.")
         except Exception as e:
@@ -503,9 +599,16 @@ class MachineLearningGUI(ttk.Window):
         self.value_labels[feature].config(text=formatted_value)
 
     def predict_quality(self):
-        """Validates input data from entries and runs the SVM prediction."""
-        if "SVM" not in self.trained_models:
-            messagebox.showwarning("Model Not Ready", "The SVM model is not yet trained. Please train it in Tab 3.")
+        """Validates input data from entries and runs the prediction."""
+        # Use the best model for prediction, defaulting to SVM
+        best_model_name = "SVM"
+        if self.model_metrics:
+            # Find the model with the best F1-Score for the 'Good' class
+            best_model_name = max(self.model_metrics, key=lambda k: self.model_metrics[k]['F1-Score (Good)'])
+
+        if best_model_name not in self.trained_models:
+            messagebox.showwarning("Model Not Ready",
+                                   f"The best model ({best_model_name}) is not trained. Please train it in Tab 3.")
             return
 
         input_data = []
@@ -531,14 +634,14 @@ class MachineLearningGUI(ttk.Window):
         try:
             input_df = pd.DataFrame([input_data], columns=self.entries.keys())
             scaled_data = self.scaler.transform(input_df)
-            model = self.trained_models["SVM"]
+            model = self.trained_models[best_model_name]
             prediction_numeric = model.predict(scaled_data)[0]
             prediction_proba = model.predict_proba(scaled_data)[0]
             class_mapping = {0: 'BAD', 1: 'GOOD'}
             result_text = class_mapping.get(prediction_numeric, 'UNKNOWN')
             confidence = prediction_proba[prediction_numeric] * 100
             self.result_label.config(text=result_text, bootstyle=SUCCESS if result_text == 'GOOD' else DANGER)
-            self.confidence_label.config(text=f"Confidence: {confidence:.2f}%")
+            self.confidence_label.config(text=f"Confidence: {confidence:.2f}% (using {best_model_name})")
         except Exception as e:
             messagebox.showerror("Prediction Error", f"An unexpected error occurred during prediction: {e}")
 
@@ -547,3 +650,4 @@ class MachineLearningGUI(ttk.Window):
 if __name__ == "__main__":
     app = MachineLearningGUI()
     app.mainloop()
+
