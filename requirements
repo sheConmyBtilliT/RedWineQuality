@@ -1,0 +1,10 @@
+#Necessary Libraries
+
+pandas
+numpy
+sklearn
+matplotlib
+seaborn
+tkinter
+ttkbootstrap
+imblearn
