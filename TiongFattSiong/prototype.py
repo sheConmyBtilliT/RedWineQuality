@@ -15,6 +15,7 @@ import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from sklearn.metrics import confusion_matrix
 
 
 # --- Main Application Class ---
@@ -22,7 +23,7 @@ class MachineLearningGUI(ttk.Window):
     def __init__(self):
         super().__init__(themename="superhero")
         self.title("Comprehensive Wine Quality Analysis Tool")
-        self.geometry("1000x900")
+        self.geometry("1100x900")
 
         # --- Class Attributes ---
         self.raw_df = None
@@ -133,22 +134,28 @@ class MachineLearningGUI(ttk.Window):
         # --- Controls for plotting ---
         plot_controls_frame = ttk.Frame(self.comparison_frame)
         plot_controls_frame.pack(fill=X, pady=5)
-        plot_controls_frame.columnconfigure((0, 1, 2), weight=1)
+        plot_controls_frame.columnconfigure((0, 1, 2, 3), weight=1)
 
         # Dropdown for model selection
         self.model_selector = ttk.Combobox(plot_controls_frame, state="readonly", bootstyle="info")
-        self.model_selector.grid(row=0, column=0, columnspan=3, sticky=tk.EW, padx=(0, 5), pady=(0, 5))
+        self.model_selector.grid(row=0, column=0, columnspan=4, sticky=tk.EW, padx=(0, 5), pady=(0, 5))
 
         # Chart generation buttons
         overall_chart_button = ttk.Button(plot_controls_frame, text="Overall Comparison",
                                           command=self.generate_overall_comparison_chart, bootstyle="info")
         overall_chart_button.grid(row=1, column=0, sticky=tk.EW, pady=5, padx=(0, 5))
+
         detailed_chart_button = ttk.Button(plot_controls_frame, text="Detailed Report",
                                            command=self.generate_detailed_chart, bootstyle="info")
         detailed_chart_button.grid(row=1, column=1, sticky=tk.EW, pady=5, padx=5)
+
         avp_chart_button = ttk.Button(plot_controls_frame, text="Actual vs. Predicted",
                                       command=self.generate_actual_vs_predicted_chart, bootstyle="info")
-        avp_chart_button.grid(row=1, column=2, sticky=tk.EW, pady=5, padx=(5, 0))
+        avp_chart_button.grid(row=1, column=2, sticky=tk.EW, pady=5, padx=5)
+
+        cm_chart_button = ttk.Button(plot_controls_frame, text="Confusion Matrix",
+                                     command=self.generate_confusion_matrix_chart, bootstyle="info")
+        cm_chart_button.grid(row=1, column=3, sticky=tk.EW, pady=5, padx=(5, 0))
 
         # Use a ScrolledFrame to make the content scrollable
         self.chart_frame = ScrolledFrame(self.comparison_frame, autohide=True)
@@ -425,7 +432,6 @@ class MachineLearningGUI(ttk.Window):
         for widget in frame.winfo_children():
             widget.destroy()
 
-
     def autosave_figure(self, fig, filename):
         """Saves the figure to a 'charts' directory and shows a message."""
         charts_dir = 'charts'
@@ -581,6 +587,28 @@ class MachineLearningGUI(ttk.Window):
                                          textcoords='offset points', weight='bold')
         plt.tight_layout()
         self.autosave_figure(fig, f'actual_vs_predicted_{selected_model}.png')
+        canvas = FigureCanvasTkAgg(fig, master=self.chart_frame);
+        canvas.draw();
+        canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=True)
+
+    def generate_confusion_matrix_chart(self):
+        selected_model = self.model_selector.get()
+        if not selected_model: messagebox.showwarning("No Model Selected",
+                                                      "Please select a model from the dropdown."); return
+        if not self.model_predictions: messagebox.showwarning("No Data",
+                                                              "Please train the models first in Tab 3."); return
+        self.clear_chart_frame(self.chart_frame)
+
+        cm = confusion_matrix(self.y_test, self.model_predictions[selected_model])
+        fig, ax = plt.subplots(figsize=(8, 6), dpi=100)
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', ax=ax,
+                    xticklabels=['Bad', 'Good'], yticklabels=['Bad', 'Good'])
+        ax.set_xlabel('Predicted Label', fontsize=12)
+        ax.set_ylabel('Actual Label', fontsize=12)
+        ax.set_title(f'Confusion Matrix for {selected_model}', fontsize=16)
+
+        plt.tight_layout()
+        self.autosave_figure(fig, f'confusion_matrix_{selected_model}.png')
         canvas = FigureCanvasTkAgg(fig, master=self.chart_frame);
         canvas.draw();
         canvas.get_tk_widget().pack(side=TOP, fill=BOTH, expand=True)
