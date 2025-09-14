@@ -313,7 +313,7 @@ class MachineLearningGUI(ttk.Window):
             self.progress_bar.stop()
             return
 
-        from sklearn.tree import DecisionTreeClassifier
+        from sklearn.ensemble import RandomForestClassifier
         from sklearn.svm import SVC
         from sklearn.neighbors import KNeighborsClassifier
 
@@ -321,13 +321,13 @@ class MachineLearningGUI(ttk.Window):
 
         # Define parameter grids
         param_grids = {
-            "Decision Tree": {'criterion': ['gini', 'entropy'], 'max_depth': [None, 10, 20, 30]},
+            "Random Forest": {'n_estimators': [100, 200], 'max_depth': [10, 20, None]},
             "SVM": {'C': [0.1, 1, 10], 'gamma': ['scale', 'auto']},
             "KNN": {'n_neighbors': [3, 5, 7, 9], 'weights': ['uniform', 'distance']}
         }
 
         models = {
-            "Decision Tree": DecisionTreeClassifier(random_state=42),
+            "Random Forest": RandomForestClassifier(random_state=42),
             "SVM": SVC(probability=True, random_state=42),
             "KNN": KNeighborsClassifier()
         }
@@ -375,7 +375,7 @@ class MachineLearningGUI(ttk.Window):
                 self.update_results("Using default model parameters.\n\n")
 
             from sklearn.metrics import classification_report, accuracy_score, roc_auc_score
-            from sklearn.tree import DecisionTreeClassifier
+            from sklearn.ensemble import RandomForestClassifier
             from sklearn.svm import SVC
             from sklearn.neighbors import KNeighborsClassifier
 
@@ -385,7 +385,7 @@ class MachineLearningGUI(ttk.Window):
 
             # Use tuned params if available, otherwise use defaults
             models_to_train = {
-                "Decision Tree": DecisionTreeClassifier(**self.best_params.get("Decision Tree", {'random_state': 42})),
+                "Random Forest": RandomForestClassifier(**self.best_params.get("Random Forest", {'random_state': 42})),
                 "SVM": SVC(**svm_params),
                 "KNN": KNeighborsClassifier(**self.best_params.get("KNN", {}))
             }
@@ -599,8 +599,8 @@ class MachineLearningGUI(ttk.Window):
 
     def predict_quality(self):
         """Validates input data from entries and runs the prediction."""
-        # Use the best model for prediction, defaulting to SVM
-        best_model_name = "SVM"
+        # Use the best model for prediction, defaulting to Random Forest
+        best_model_name = "Random Forest"
         if self.model_metrics:
             # Find the model with the best F1-Score for the 'Good' class
             best_model_name = max(self.model_metrics, key=lambda k: self.model_metrics[k]['F1-Score (Good)'])
