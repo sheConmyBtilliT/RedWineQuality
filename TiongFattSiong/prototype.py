@@ -90,13 +90,13 @@ class MachineLearningGUI(ttk.Window):
         # Chart generation buttons
         heatmap_button = ttk.Button(plot_controls_frame, text="Correlation Heatmap",
                                     command=self.generate_correlation_heatmap, bootstyle="info")
-        heatmap_button.grid(row=0, column=0, sticky=EW, pady=5, padx=(0, 5))
+        heatmap_button.grid(row=0, column=0, sticky=tk.EW, pady=5, padx=(0, 5))
         dist_button = ttk.Button(plot_controls_frame, text="Quality Distributions",
                                  command=self.generate_quality_distributions, bootstyle="info")
-        dist_button.grid(row=0, column=1, sticky=EW, pady=5, padx=5)
+        dist_button.grid(row=0, column=1, sticky=tk.EW, pady=5, padx=5)
         boxplots_button = ttk.Button(plot_controls_frame, text="Feature Box Plots",
                                      command=self.generate_feature_boxplots, bootstyle="info")
-        boxplots_button.grid(row=0, column=2, sticky=EW, pady=5, padx=(5, 0))
+        boxplots_button.grid(row=0, column=2, sticky=tk.EW, pady=5, padx=(5, 0))
 
         # Use a ScrolledFrame to make the content scrollable
         self.viz_chart_frame = ScrolledFrame(parent_tab, autohide=True)
@@ -111,14 +111,14 @@ class MachineLearningGUI(ttk.Window):
         # New button for hyperparameter tuning
         tune_button = ttk.Button(control_frame, text="Tune Hyperparameters (Optional, Slow)",
                                  command=self.start_tuning_thread, bootstyle="warning")
-        tune_button.grid(row=0, column=0, sticky=EW, padx=(0, 5), pady=5)
+        tune_button.grid(row=0, column=0, sticky=tk.EW, padx=(0, 5), pady=5)
 
         train_button = ttk.Button(control_frame, text="Start Data Preprocessing & Model Training",
                                   command=self.start_training_thread, bootstyle="success")
-        train_button.grid(row=0, column=1, sticky=EW, padx=(5, 0), pady=5)
+        train_button.grid(row=0, column=1, sticky=tk.EW, padx=(5, 0), pady=5)
 
         self.progress_bar = ttk.Progressbar(control_frame, mode='indeterminate')
-        self.progress_bar.grid(row=1, column=0, columnspan=2, sticky=EW, pady=5)
+        self.progress_bar.grid(row=1, column=0, columnspan=2, sticky=tk.EW, pady=5)
 
         self.results_text = tk.Text(parent_tab, height=30, width=100, font=("Courier New", 10), wrap="word")
         self.results_text.pack(pady=10, fill=BOTH, expand=True)
@@ -137,18 +137,18 @@ class MachineLearningGUI(ttk.Window):
 
         # Dropdown for model selection
         self.model_selector = ttk.Combobox(plot_controls_frame, state="readonly", bootstyle="info")
-        self.model_selector.grid(row=0, column=0, columnspan=3, sticky=EW, padx=(0, 5), pady=(0, 5))
+        self.model_selector.grid(row=0, column=0, columnspan=3, sticky=tk.EW, padx=(0, 5), pady=(0, 5))
 
         # Chart generation buttons
         overall_chart_button = ttk.Button(plot_controls_frame, text="Overall Comparison",
                                           command=self.generate_overall_comparison_chart, bootstyle="info")
-        overall_chart_button.grid(row=1, column=0, sticky=EW, pady=5, padx=(0, 5))
+        overall_chart_button.grid(row=1, column=0, sticky=tk.EW, pady=5, padx=(0, 5))
         detailed_chart_button = ttk.Button(plot_controls_frame, text="Detailed Report",
                                            command=self.generate_detailed_chart, bootstyle="info")
-        detailed_chart_button.grid(row=1, column=1, sticky=EW, pady=5, padx=5)
+        detailed_chart_button.grid(row=1, column=1, sticky=tk.EW, pady=5, padx=5)
         avp_chart_button = ttk.Button(plot_controls_frame, text="Actual vs. Predicted",
                                       command=self.generate_actual_vs_predicted_chart, bootstyle="info")
-        avp_chart_button.grid(row=1, column=2, sticky=EW, pady=5, padx=(5, 0))
+        avp_chart_button.grid(row=1, column=2, sticky=tk.EW, pady=5, padx=(5, 0))
 
         # Use a ScrolledFrame to make the content scrollable
         self.chart_frame = ScrolledFrame(self.comparison_frame, autohide=True)
@@ -278,14 +278,14 @@ class MachineLearningGUI(ttk.Window):
 
     def start_tuning_thread(self):
         if self.raw_df is None: messagebox.showwarning("No Data", "Please load the dataset first."); return
-        if not self.X_train:  # Check if data has been preprocessed
+        if not hasattr(self, 'X_train_tuned'):  # Check if data has been preprocessed for tuning
             messagebox.showinfo("Info", "Data will be preprocessed before tuning.")
         threading.Thread(target=self.tune_hyperparameters, daemon=True).start()
 
     def _preprocess_data_if_needed(self):
         """Internal helper to preprocess data without training models."""
-        if self.X_train is not None:
-            self.update_results("Data is already preprocessed. Using existing splits.\n")
+        if hasattr(self, 'X_train_tuned'):
+            self.update_results("Data is already preprocessed for tuning. Using existing splits.\n")
             return True
         self.update_results("--- Preprocessing Data for Tuning ---\n")
         try:
@@ -313,21 +313,24 @@ class MachineLearningGUI(ttk.Window):
             self.progress_bar.stop()
             return
 
-        from sklearn.neighbors import KNeighborsClassifier
+        from sklearn.tree import DecisionTreeClassifier
         from sklearn.svm import SVC
-        from sklearn.neural_network import MLPClassifier
+        from sklearn.neighbors import KNeighborsClassifier
 
         self.update_results("--- Starting Hyperparameter Tuning (This may take several minutes) ---\n")
 
         # Define parameter grids
         param_grids = {
-            "KNN": {'n_neighbors': [3, 5, 7, 9], 'weights': ['uniform', 'distance']},
+            "Decision Tree": {'criterion': ['gini', 'entropy'], 'max_depth': [None, 10, 20, 30]},
             "SVM": {'C': [0.1, 1, 10], 'gamma': ['scale', 'auto']},
-            "ANN": {'hidden_layer_sizes': [(50,), (100,)], 'activation': ['relu', 'tanh']}
+            "KNN": {'n_neighbors': [3, 5, 7, 9], 'weights': ['uniform', 'distance']}
         }
 
-        models = {"KNN": KNeighborsClassifier(), "SVM": SVC(probability=True),
-                  "ANN": MLPClassifier(max_iter=500, early_stopping=True, random_state=42)}
+        models = {
+            "Decision Tree": DecisionTreeClassifier(random_state=42),
+            "SVM": SVC(probability=True, random_state=42),
+            "KNN": KNeighborsClassifier()
+        }
 
         self.best_params.clear()
 
@@ -372,23 +375,19 @@ class MachineLearningGUI(ttk.Window):
                 self.update_results("Using default model parameters.\n\n")
 
             from sklearn.metrics import classification_report, accuracy_score, roc_auc_score
-            from sklearn.neighbors import KNeighborsClassifier
+            from sklearn.tree import DecisionTreeClassifier
             from sklearn.svm import SVC
-            from sklearn.neural_network import MLPClassifier
+            from sklearn.neighbors import KNeighborsClassifier
 
-            # --- FIX STARTS HERE ---
-            # Get default SVM parameters that include probability=True
             svm_params = {'probability': True, 'random_state': 42}
-            # Update with tuned parameters if they exist
             if "SVM" in self.best_params:
                 svm_params.update(self.best_params["SVM"])
-            # --- FIX ENDS HERE ---
 
             # Use tuned params if available, otherwise use defaults
             models_to_train = {
-                "KNN": KNeighborsClassifier(**self.best_params.get("KNN", {})),
-                "SVM": SVC(**svm_params), # Use the updated svm_params
-                "ANN": MLPClassifier(**self.best_params.get("ANN", {'max_iter': 2000, 'early_stopping': True, 'random_state': 42}))
+                "Decision Tree": DecisionTreeClassifier(**self.best_params.get("Decision Tree", {'random_state': 42})),
+                "SVM": SVC(**svm_params),
+                "KNN": KNeighborsClassifier(**self.best_params.get("KNN", {}))
             }
 
             self.model_metrics.clear();
