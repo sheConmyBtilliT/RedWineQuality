@@ -425,6 +425,7 @@ class MachineLearningGUI(ttk.Window):
         for widget in frame.winfo_children():
             widget.destroy()
 
+
     def autosave_figure(self, fig, filename):
         """Saves the figure to a 'charts' directory and shows a message."""
         charts_dir = 'charts'
