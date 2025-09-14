@@ -1,7 +1,8 @@
 # --- 1. Import Necessary Libraries ---
+import joblib
 import streamlit as st
 import pandas as pd
-import joblib
+from pathlib import Path
 
 
 # --- 2. Load the Pre-trained Model, Scaler, and Data for UI ---
@@ -10,23 +11,32 @@ import joblib
 def load_artifacts():
     """
     Loads the saved RandomForest model, the StandardScaler, and the
-    original wine dataset (for UI slider ranges).
+    original wine dataset (for UI slider ranges) using robust paths.
     """
     try:
+        # Get the directory of the current script to build robust file paths
+        script_dir = Path(__file__).parent.resolve()
+
+        # Define the full paths for the required files
+        model_path = script_dir / 'random_forest_model.joblib'
+        scaler_path = script_dir / 'scaler.joblib'
+        csv_path = script_dir / 'winequality-red.csv'
+
         # Load the pre-trained model
-        model = joblib.load('random_forest_model.joblib')
+        model = joblib.load(model_path)
 
         # Load the fitted scaler
-        scaler = joblib.load('scaler.joblib')
+        scaler = joblib.load(scaler_path)
 
         # Load the original dataset to get column names and ranges for sliders
-        wine_df = pd.read_csv('winequality-red.csv')
+        wine_df = pd.read_csv(csv_path)
 
         return model, scaler, wine_df
-    except FileNotFoundError:
-        st.error("Error: Model or scaler files not found.")
+    except FileNotFoundError as e:
+        st.error(f"Error: A required file was not found.")
+        st.error(f"Details: {e}")
         st.error(
-            "Please run the 'red_wine_quality_analysis.py' script first to generate 'random_forest_model.joblib' and 'scaler.joblib'.")
+            "Please make sure 'random_forest_model.joblib', 'scaler.joblib', and 'winequality-red.csv' are in the same folder as this script.")
         return None, None, None
 
 
