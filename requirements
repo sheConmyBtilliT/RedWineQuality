@@ -2,7 +2,9 @@
 
 pandas
 numpy
-scikit-learn
-tensorflow
+sklearn
 matplotlib
 seaborn
+tkinter
+ttkbootstrap
+imblearn
